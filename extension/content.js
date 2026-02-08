@@ -1,22 +1,32 @@
 /* content.js */
 
-let BACKEND_URL = "";
-let USER_ID = "";
+let CONFIG = {
+  url: "",
+  user: "",
+  pass: ""
+};
 
-// 1. Initialize Config
-browser.storage.local.get(["backendUrl", "userId", "fontEnabled"]).then((res) => {
-  BACKEND_URL = res.backendUrl;
-  USER_ID = res.userId;
-  if (res.fontEnabled) applyDyslexiaFont();
-});
+// 1. Initialize & Listen for Changes
+function loadConfig() {
+  browser.storage.local.get(["backendUrl", "auth_user", "auth_pass", "fontEnabled"]).then((res) => {
+    CONFIG.url = res.backendUrl || "";
+    CONFIG.user = res.auth_user || "";
+    CONFIG.pass = res.auth_pass || "";
+
+    if (res.fontEnabled) applyDyslexiaFont();
+  });
+}
+loadConfig();
+
+// Listen for updates from popup
+browser.storage.onChanged.addListener(loadConfig);
 
 // 2. Listen for Messages (From Popup or Background)
 browser.runtime.onMessage.addListener((msg) => {
   if (msg.command === "toggleFont") {
     if (msg.enable) applyDyslexiaFont();
     else removeDyslexiaFont();
-  } 
-  else if (msg.command === "analyzeSelection") {
+  } else if (msg.command === "analyzeSelection") {
     showCondensePanel(msg.text);
   }
 });
@@ -27,114 +37,43 @@ function applyDyslexiaFont() {
   document.body.style.fontFamily = "Arial, sans-serif";
   document.body.style.lineHeight = "1.6";
   document.body.style.letterSpacing = "0.05em";
-  document.body.style.backgroundColor = "#FDFBF7"; // Cream tint
+  document.body.style.backgroundColor = "#FDFBF7";
   document.body.style.color = "#333";
 }
 
 function removeDyslexiaFont() {
-  document.body.style = ""; // Naive reset (reload recommended)
+  document.body.style = "";
 }
 
-// 3. Double Click to Define/Correct
-document.addEventListener("dblclick", async () => {
-  if (!BACKEND_URL) return;
-
-  const selection = window.getSelection().toString().trim();
-  if (selection.length < 2) return;
-
-  // We assume the user might want a definition OR a correction
-  // For this demo, let's hit the "Suggest" endpoint to see if it's misspelled
-  // Need to get the full sentence context? (Simplified for now)
-  
-  try {
-    const response = await fetch(`${BACKEND_URL}/dyslexia/v2/suggest`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-User-ID": USER_ID // Private Learning!
-      },
-      body: JSON.stringify({
-        sentence: document.body.innerText.substring(0, 500), // Naive context
-        misspelled_word: selection
-      })
-    });
-    
-    const data = await response.json();
-    showTooltip(data, selection);
-  } catch (e) {
-    console.error("Backend Error", e);
-  }
-});
-
-function showTooltip(data, original) {
-  // (Reuse the tooltip UI code from previous responses, 
-  // but ensure it handles the 'suggestions' array from the backend)
-  console.log("Suggestions:", data.suggestions);
-  alert(`Dyslexic Suggestions for '${original}':\n` + 
-    data.suggestions.map(s => `• ${s.word} (${s.confidence})`).join("\n")
-  );
-}
-
-function showCondensePanel(text) {
-  if (!BACKEND_URL) return alert("Connect Backend First");
-
-  fetch(`${BACKEND_URL}/view/condense`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text })
-  })
-  .then(r => r.json())
-  .then(data => {
-    alert("Key Points:\n" + data.summary_bullets.join("\n"));
-  });
-}
-
-/* content.js */
-
-let CONFIG = {
-  url: "",
-  user: "",
-  pass: ""
-};
-
-// 1. Initialize & Listen for Changes
-function loadConfig() {
-  browser.storage.local.get(["backendUrl", "auth_user", "auth_pass", "fontEnabled"]).then((res) => {
-    CONFIG.url = res.backendUrl;
-    CONFIG.user = res.auth_user;
-    CONFIG.pass = res.auth_pass;
-    
-    if(res.fontEnabled) applyDyslexiaFont();
-  });
-}
-loadConfig();
-
-// Listen for updates from popup
-browser.storage.onChanged.addListener(loadConfig);
-
-// 2. Helper to make Authenticated Requests
+// 3. Helper to make Authenticated Requests
 async function secureFetch(endpoint, body) {
-  if (!CONFIG.url || !CONFIG.user) return null;
+  if (!CONFIG.url) return null;
 
-  const authString = btoa(`${CONFIG.user}:${CONFIG.pass}`);
-  
-  const response = await fetch(`${CONFIG.url}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Basic ${authString}`
-    },
-    body: JSON.stringify(body)
-  });
+  const headers = { "Content-Type": "application/json" };
 
-  if (response.status === 401) {
-    console.error("Dyslexic: Authentication Failed. Check Extension Settings.");
+  if (CONFIG.user) {
+    headers["Authorization"] = "Basic " + btoa(CONFIG.user + ":" + CONFIG.pass);
+  }
+
+  try {
+    const response = await fetch(`${CONFIG.url}${endpoint}`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body)
+    });
+
+    if (response.status === 401) {
+      console.error("Dyslexic: Authentication Failed. Check Extension Settings.");
+      return null;
+    }
+    return response.json();
+  } catch (e) {
+    console.error("Dyslexic: Backend Error", e);
     return null;
   }
-  return response.json();
 }
 
-// 3. Double-Click Handler
+// 4. Double-Click Handler
 document.addEventListener("dblclick", async () => {
   const selection = window.getSelection().toString().trim();
   if (selection.length < 2) return;
@@ -151,16 +90,60 @@ document.addEventListener("dblclick", async () => {
   }
 });
 
-// UI helper (Same as before, abbreviated)
 function showSuggestionBox(data, original) {
-  // ... existing popup UI code ...
-  // When user clicks a suggestion, send FEEDBACK
-  // Example button click:
-  // secureFetch("/dyslexia/feedback", { 
-  //   misspelling: original, 
-  //   chosen: clickedWord, 
-  //   action: "accepted" 
-  // });
+  const existing = document.getElementById("dyslexic-tooltip");
+  if (existing) existing.remove();
+
+  const box = document.createElement("div");
+  box.id = "dyslexic-tooltip";
+  box.style.cssText = "position:fixed;top:20px;right:20px;background:#fff;border:2px solid #005a9c;" +
+    "border-radius:8px;padding:12px;z-index:99999;font-family:Arial,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.15);max-width:280px;";
+
+  const title = document.createElement("strong");
+  title.textContent = "Suggestions for \"" + original + "\":";
+  box.appendChild(title);
+  box.appendChild(document.createElement("br"));
+
+  data.suggestions.forEach((s) => {
+    const row = document.createElement("div");
+    row.style.cssText = "margin:4px 0;cursor:pointer;padding:4px 8px;border-radius:4px;background:#f0f4ff;";
+    row.className = "dyslexic-suggestion";
+    row.dataset.word = s.word;
+    row.textContent = s.word + " ";
+    const conf = document.createElement("span");
+    conf.style.cssText = "color:#888;font-size:11px;";
+    conf.textContent = "(" + s.confidence + ")";
+    row.appendChild(conf);
+    row.addEventListener("click", () => {
+      secureFetch("/dyslexia/feedback", {
+        misspelling: original,
+        chosen: s.word,
+        action: "accepted"
+      });
+      box.remove();
+    });
+    box.appendChild(row);
+  });
+
+  const footer = document.createElement("div");
+  footer.style.cssText = "margin-top:8px;text-align:right;";
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "Close";
+  closeBtn.style.cssText = "border:none;background:#ccc;padding:4px 10px;border-radius:4px;cursor:pointer;";
+  closeBtn.addEventListener("click", () => box.remove());
+  footer.appendChild(closeBtn);
+  box.appendChild(footer);
+
+  document.body.appendChild(box);
 }
 
-// ... Font Toggle Functions ...
+// 5. Condense / Analyze Selection
+function showCondensePanel(text) {
+  if (!CONFIG.url) return;
+
+  secureFetch("/view/condense", { text: text }).then((data) => {
+    if (data && data.summary_bullets) {
+      alert("Key Points:\n" + data.summary_bullets.join("\n"));
+    }
+  });
+}

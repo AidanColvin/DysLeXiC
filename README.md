@@ -78,10 +78,22 @@ Dyslexic utilizes a **Hybrid Client-Server Architecture** to overcome browser re
     *Output:* \`Running on http://0.0.0.0:5000\`
 
 ### Loading the Extension
+
+**Option A: Load from source (for development)**
 1.  Open Firefox and navigate to \`about:debugging\`.
 2.  Click **"This Firefox"** > **"Load Temporary Add-on"**.
 3.  Navigate to the \`extension/\` folder and select \`manifest.json\`.
 4.  The Dyslexic icon will appear in your toolbar.
+
+**Option B: Build and install the packaged extension**
+1.  Run the build script from the project root:
+    \`\`\`bash
+    bash build.sh
+    \`\`\`
+2.  This creates \`dyslexic-firefox.zip\` in the project root.
+3.  Open Firefox and navigate to \`about:debugging\`.
+4.  Click **"This Firefox"** > **"Load Temporary Add-on"**.
+5.  Select the generated \`dyslexic-firefox.zip\` file.
 
 ---
 
@@ -129,12 +141,13 @@ Conductor/
 │   ├── context_engine.py     # BERT Transformer Model for Contextualization
 │   ├── structure_analyzer.py # Stylometry, Complexity Scoring & HTML Parsing
 │   └── user_profile.py       # Active Learning (User Corrections & Lexicon)
-├── extension/                # The Browser Interface
+├── extension/                # The Browser Interface (Firefox WebExtension)
 │   ├── manifest.json         # Extension Configuration
 │   ├── content.js            # DOM Injection (Reader Mode/Fonts)
 │   ├── background.js         # API Communication
 │   ├── popup.html            # User Interface (Menu)
-│   └── assets/               # Icons & Fonts
+│   ├── popup.js              # Popup Logic
+│   └── icons/                # Extension Icons
 ├── config/                   # Environment Configurations
 │   ├── public_mode.env       # Open Access Settings
 │   └── private_mode.env      # Secured/API Key Settings
@@ -143,6 +156,7 @@ Conductor/
 │   ├── test_api_integration.py
 │   └── ...
 ├── run.py                    # Root Launcher
+├── build.sh                  # Firefox Extension Build Script
 ├── Procfile                  # Cloud Deployment Config (Render/Heroku)
 └── requirements.txt          # Python Dependencies
 ```
