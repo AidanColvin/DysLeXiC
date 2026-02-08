@@ -33,7 +33,7 @@
         /* HEADER CARD */
         .header-card {
             border: 5px solid var(--black);
-            background: var(--white);
+            background: transparent; /* allow sections to be individually styled (logo area can be transparent) */
             display: flex; 
             justify-content: space-between;
             align-items: center; 
@@ -47,7 +47,8 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
-            flex: 1.2; 
+            flex: 1.2;
+            background: var(--white); /* keep left side white for text readability */
         }
 
         .header-right {
@@ -55,7 +56,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background-color: var(--white); /* Forces white background */
+            background-color: transparent; /* make logo area transparent */
             height: 100%;
             border-left: none; 
             padding-right: 30px;
@@ -68,7 +69,7 @@
             height: auto;
             object-fit: contain;
             display: block;
-            background-color: var(--white); /* Ensure background is white */
+            background-color: transparent; /* allow the image transparency to show through */
         }
 
         /* TITLE FONT */
