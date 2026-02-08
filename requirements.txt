@@ -4,3 +4,8 @@ textblob
 gTTS
 SpeechRecognition
 pydub
+# NEW: Deep Learning dependencies
+torch
+transformers
+happytransformer
+sentencepiece
