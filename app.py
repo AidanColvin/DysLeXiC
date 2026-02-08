@@ -1,128 +1,117 @@
 import os
 import logging
+from functools import wraps
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
-from pathlib import Path
+import base64
 
-# Import your robust modules (ensure these files exist from previous steps)
+# Import your robust modules
 import suggestion_pipeline
-import user_profile
 import readability_service
-import pdf_reflow_service
 import structure_analyzer
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("NeuroRead-Backend")
+logger = logging.getLogger("NeuroRead-Secure")
 
 app = Flask(__name__)
 
-# CRITICAL: Allow CORS for all domains so the Extension (which runs on any URL) can talk to this.
-# In production, you might restrict this, but for Codespaces + Extension, we need wildcard access.
+# CORS: Allow all origins (Extension needs this)
 CORS(app, resources={r"/*": {"origins": "*"}})
+
+# --- SECURITY CONFIGURATION ---
+# Get credentials from Environment Variables (Set these in Render/Codespace!)
+# Default to "admin"/"password" ONLY if not set (Safe fallback for dev)
+AUTH_USER = os.environ.get("APP_USER", "admin")
+AUTH_PASS = os.environ.get("APP_PASS", "password")
+
+def check_auth(username, password):
+    """Checks if provided credentials match environment variables."""
+    return username == AUTH_USER and password == AUTH_PASS
+
+def authenticate():
+    """Sends a 401 response that enables basic auth."""
+    return make_response(jsonify({'error': 'Unauthorized access'}), 401)
+
+def requires_auth(f):
+    """
+    Decorator to require Authentication for specific routes.
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 @app.before_request
 def handle_preflight():
-    """
-    Handle CORS preflight requests for browser extensions.
-    """
     if request.method == "OPTIONS":
         response = make_response()
         response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, X-User-ID")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
         response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         return response
 
-def get_user_id():
-    """
-    Helper to extract the unique User ID sent by the extension.
-    This ensures 'Private' learning profiles for each user.
-    """
-    # Default to 'public_guest' if the extension doesn't send an ID
-    return request.headers.get("X-User-ID", "public_guest")
-
-# --- 1. DYSLEXIA & LEARNING ENDPOINTS ---
-
-@app.route("/dyslexia/v2/suggest", methods=["POST"])
-def suggest_robust():
-    """
-    Main spellcheck endpoint. 
-    Personalizes results based on the X-User-ID header.
-    """
-    user_id = get_user_id()
-    data = request.get_json()
-    sentence = data.get("sentence", "")
-    misspelled = data.get("misspelled_word", "").lower()
-    
-    # Load dictionary (In production, load this once globally)
-    from nltk.corpus import words as nltk_words
-    english_vocab = [w.lower() for w in nltk_words.words() if len(w) > 2]
-
-    # Pass user_id to pipeline to load specific profile
-    result = suggestion_pipeline.get_robust_suggestions(
-        sentence, 
-        misspelled, 
-        english_vocab,
-        user_id=user_id 
-    )
-    
-    return jsonify(result)
-
-@app.route("/dyslexia/feedback", methods=["POST"])
-def feedback():
-    """
-    Learning Endpoint.
-    Records when a user accepts/ignores a suggestion to update their private profile.
-    """
-    user_id = get_user_id()
-    data = request.get_json()
-    
-    suggestion_pipeline.handle_user_feedback(
-        data.get("misspelling"),
-        data.get("chosen"),
-        data.get("action"),
-        user_id=user_id
-    )
-    
-    return jsonify({"status": "learned", "user": user_id})
-
-# --- 2. READER MODE & PDF ENDPOINTS ---
-
-@app.route("/view/reader-mode", methods=["POST"])
-def reader_mode():
-    """
-    Takes a URL and returns a cleaned, dyslexia-friendly HTML version.
-    Using POST to avoid URL encoding issues in query params.
-    """
-    data = request.get_json()
-    url = data.get("url")
-    
-    if not url: 
-        return jsonify({"error": "No URL provided"}), 400
-        
-    result = readability_service.fetch_and_clean_url(url)
-    return jsonify(result) # Returns { html: "...", title: "..." }
-
-@app.route("/view/condense", methods=["POST"])
-def condense():
-    """
-    Analyzes text to extract structure (Headings, Bullets).
-    """
-    data = request.get_json()
-    text = data.get("text", "")
-    structure = structure_analyzer.extract_key_structure(text)
-    return jsonify(structure)
-
-# --- 3. SYSTEM STATUS ---
+# --- SECURED ENDPOINTS ---
 
 @app.route("/status", methods=["GET"])
+# We leave status public so you can check if server is alive without logging in
 def status():
     return jsonify({
         "status": "online", 
-        "backend": "NeuroRead v2.0",
-        "mode": "Codespace Public"
+        "mode": "Private Secured",
+        "auth_enabled": True
     })
 
+@app.route("/dyslexia/v2/suggest", methods=["POST"])
+@requires_auth  # <--- LOCKED
+def suggest_secure():
+    """
+    Private Spellcheck. 
+    Only runs if the Extension sends correct Username/Password.
+    """
+    try:
+        data = request.get_json()
+        sentence = data.get("sentence", "")
+        misspelled = data.get("misspelled_word", "").lower()
+        
+        # Load vocab (In production, load globally)
+        from nltk.corpus import words as nltk_words
+        english_vocab = [w.lower() for w in nltk_words.words() if len(w) > 2]
+
+        # Use the Authenticated Username as the Profile ID
+        # This ensures the model learns specifically from THIS user.
+        user_id = request.authorization.username
+
+        result = suggestion_pipeline.get_robust_suggestions(
+            sentence, misspelled, english_vocab, user_id=user_id 
+        )
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/dyslexia/feedback", methods=["POST"])
+@requires_auth  # <--- LOCKED
+def feedback_secure():
+    """Private Learning Endpoint"""
+    data = request.get_json()
+    user_id = request.authorization.username
+    
+    suggestion_pipeline.handle_user_feedback(
+        data.get("misspelling"), data.get("chosen"), data.get("action"), user_id=user_id
+    )
+    return jsonify({"status": "learned"})
+
+@app.route("/view/reader-mode", methods=["POST"])
+@requires_auth  # <--- LOCKED
+def reader_mode_secure():
+    data = request.get_json()
+    result = readability_service.fetch_and_clean_url(data.get("url"))
+    return jsonify(result)
+
 if __name__ == "__main__":
-    # In Codespaces, we must run on 0.0.0.0 to expose the port
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
