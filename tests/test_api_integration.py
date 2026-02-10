@@ -1,5 +1,9 @@
-import pytest
 import sys
+from unittest.mock import MagicMock
+sys.modules['transformers'] = MagicMock()
+sys.modules['torch'] = MagicMock()
+
+import pytest
 import os
 import json
 import base64
