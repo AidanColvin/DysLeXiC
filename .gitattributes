@@ -1,9 +1,9 @@
 bert-dyslexia-finetuned/* filter=lfs diff=lfs merge=lfs -text
 bert-dyslexia-finetuned/model.safetensors filter=lfs diff=lfs merge=lfs -text
-bert-dyslexia-finetuned/** filter=lfs diff=lfs merge=lfs -text
 *.safetensors filter=lfs diff=lfs merge=lfs -text
 *.pt filter=lfs diff=lfs merge=lfs -text
 *.bin filter=lfs diff=lfs merge=lfs -text
+bert-dyslexia-finetuned/** filter=lfs diff=lfs merge=lfs -text
 *.pth filter=lfs diff=lfs merge=lfs -text
 /LICENSE filter=lfs diff=lfs merge=lfs -text
 *.md filter=lfs diff=lfs merge=lfs -text
