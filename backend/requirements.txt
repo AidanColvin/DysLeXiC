@@ -17,3 +17,6 @@ readability-lxml    # Extracting "Main Content" from web pages
 beautifulsoup4      # For cleaning HTML tags
 pymupdf             # (fitz) For extracting structure from PDFs
 html2text           
+nltk
+metaphone
+python-Levenshtein

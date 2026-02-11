@@ -4,6 +4,7 @@ from functools import wraps
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import base64
+import nltk
 
 # Import your robust modules
 import suggestion_pipeline
@@ -15,6 +16,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Dyslexic-Secure")
 
 app = Flask(__name__)
+
+# Ensure NLTK data is available
+try:
+    nltk.data.find('corpora/words')
+except LookupError:
+    logger.info("Downloading NLTK words corpus...")
+    nltk.download('words')
 
 # CORS: Allow all origins (Extension needs this)
 CORS(app, resources={r"/*": {"origins": "*"}})
